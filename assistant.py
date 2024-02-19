@@ -8,6 +8,35 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from docx import Document
 
+
+def initialize_google_drive_api(service_account_file, scopes):
+    credentials = Credentials.from_service_account_file(service_account_file, scopes=scopes)
+    service = build('drive', 'v3', credentials=credentials)
+    return service
+
+def append_text_to_docx(file_path, text):
+    doc = Document(file_path)
+    doc.add_paragraph(text)
+    doc.save(file_path)
+
+def update_file_on_google_drive(service, FILE_ID, file_path, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'):
+    media = MediaFileUpload(file_path, mimetype=mimetype, resumable=True)
+    updated_file = service.files().update(fileId=FILE_ID, media_body=media).execute()
+    return updated_file
+
+def download_file_as_docx(service, FILE_ID, output_file_name):
+    request = service.files().export_media(fileId=FILE_ID, mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+
+    with open(output_file_name, 'wb') as f:
+        f.write(fh.getbuffer())
+    print(f"Le fichier a été exporté et sauvegardé en tant que '{output_file_name}'.")
+
+
 # Initialiser l'objet recognizer
 r = sr.Recognizer()
 
@@ -29,44 +58,24 @@ try:
 
     # Chemin vers vos credentials du compte de service
     SERVICE_ACCOUNT_FILE = '/home/emal2090/perso/google.json'
-
+    OUTPUT_FILE_NAME = 'test course.docx'
+    # L'ID du fichier sur Google Drive que vous souhaitez modifier
+    FILE_ID = '1xfc5bpGMFMst_kHQUhS_5_eHsCgBIKAXjf9hoieYcfE'
     # Définir les scopes
     SCOPES = ['https://www.googleapis.com/auth/drive']
 
-    credentials = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    service = initialize_google_drive_api(SERVICE_ACCOUNT_FILE, SCOPES)
 
-    service = build('drive', 'v3', credentials=credentials)
-
-    # L'ID du fichier sur Google Drive que vous souhaitez modifier
-    file_id = '1xfc5bpGMFMst_kHQUhS_5_eHsCgBIKAXjf9hoieYcfE'
-
-    # Demander à l'API d'exporter le fichier en format Microsoft Word (.docx)
-    request = service.files().export_media(fileId=file_id,
-                                           mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    fh = io.BytesIO()
-    # Télécharger le fichier
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while done is False:
-        status, done = downloader.next_chunk()
-        print("Téléchargement %d%%." % int(status.progress() * 100))
-
-    # Écrire le contenu dans un fichier .docx
-    with open('test course.docx', 'wb') as f:
-        f.write(fh.getbuffer())
-    print("Le fichier a été exporté et sauvegardé en tant que 'votre_fichier.docx'.")
-
-    doc = Document('test course.docx')
 
     # Reconnaître la commande vocale
     command = r.recognize_google(audio, language='fr-fr')
 
-    # Ajouter un paragraphe avec du texte
-    doc.add_paragraph(command)
+    append_text_to_docx(OUTPUT_FILE_NAME, command)
 
-    # Sauvegarder les modifications dans le fichier
-    doc.save('test course.docx')
+    update_file_on_google_drive(service, FILE_ID,OUTPUT_FILE_NAME)
+
+    download_file_as_docx(service, FILE_ID, OUTPUT_FILE_NAME)
+
 
     # Préparer le fichier pour le téléversement
     media = MediaFileUpload('test course.docx',
@@ -74,8 +83,9 @@ try:
                         resumable=True)
 
     # Mettre à jour le fichier
-    updated_file = service.files().update(fileId=file_id,
+    updated_file = service.files().update(fileId=FILE_ID,
                                           media_body=media).execute()
+
 
 
 
